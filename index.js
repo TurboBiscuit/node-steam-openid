@@ -1,10 +1,15 @@
 // Require Dependencies
-const axios = require("axios");
+const fetch = require('node-fetch')
 const openid = require("openid");
-
+const he = require('he')
+const parser = require('fast-xml-parser')
 // Main Class
 class SteamAuth {
-  constructor({ realm, returnUrl, apiKey }) {
+  constructor({
+    realm,
+    returnUrl,
+    apiKey
+  }) {
     if (!realm || !returnUrl || !apiKey)
       throw new Error(
         "Missing realm, returnURL or apiKey parameter(s). These are required."
@@ -48,34 +53,42 @@ class SteamAuth {
       );
 
       try {
-        const response = await axios.get(
-          `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=${this.apiKey}&steamids=${steamId}`
-        );
-        const players =
-          response.data &&
-          response.data.response &&
-          response.data.response.players;
+        var resp = await fetch(`https://steamcommunity.com/profiles/${steamId}?xml=1`)
+        var json = parser.parse(await resp.text(), {
+          attributeNamePrefix: "@_",
+          attrNodeName: "attr", //default is 'false'
+          textNodeName: "#text",
+          ignoreAttributes: true,
+          ignoreNameSpace: false,
+          allowBooleanAttributes: false,
+          parseNodeValue: true,
+          parseAttributeValue: false,
+          trimValues: true,
+          cdataTagName: "", //default is 'false'
+          cdataPositionChar: "\\c",
+          parseTrueNumberOnly: false,
+          arrayMode: false, //"strict"
+          attrValueProcessor: (val, attrName) => he.decode(val, {
+            isAttributeValue: true
+          }), //default is a=>a
+          tagValueProcessor: (val, tagName) => he.decode(val), //default is a=>a
+        })
 
-        if (players && players.length > 0) {
-          // Get the player
-          const player = players[0];
+        // Get the player
+        const player = json.profile
 
-          // Return user data
-          resolve({
-            _json: player,
-            steamid: steamId,
-            username: player.personaname,
-            name: player.realname,
-            profile: player.profileurl,
-            avatar: {
-              small: player.avatar,
-              medium: player.avatarmedium,
-              large: player.avatarfull
-            }
-          });
-        } else {
-          reject("No players found for the given SteamID.");
-        }
+        // Return user data
+        resolve({
+          _json: player,
+          steamid: steamId,
+          username: player.steamID,
+          name: player.realname,
+          avatar: {
+            small: player.avatarIcon,
+            medium: player.avatarmedium,
+            large: player.avatarfull
+          }
+        });
       } catch (error) {
         reject("Steam server error: " + error.message);
       }
